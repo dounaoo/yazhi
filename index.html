@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>如厕雅志 - 档案记录原型</title>
+    
+    <!-- 引入 React 核心库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    
+    <!-- 引入 Babel 用于解析 JSX -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        /* 隐藏滚动条 */
+        ::-webkit-scrollbar { display: none; }
+        
+        @font-face {
+            font-family: 'classic';
+            src: local('Source Han Serif CN'), local('Noto Serif CJK SC'), serif;
+        }
+        
+        body {
+            font-family: 'classic', serif;
+            background-color: #ede4d3;
+            margin: 0;
+            padding: 0;
+        }
+
+        .font-sans { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect, useRef } = React;
+
+        // --- 内置图标组件（替代外部 lucide-react 以修复加载报错） ---
+        const IconMinus = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        );
+        const IconPlus = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        );
+        const IconSparkles = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 3 1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3Z"></path><path d="M5 3v4"></path><path d="M19 17v4"></path><path d="M3 5h4"></path><path d="M17 19h4"></path></svg>
+        );
+        const IconFeather = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg>
+        );
+        const IconCompass = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
+        );
+
+        const App = () => {
+            const SYSTEM_TODAY = new Date(2026, 2, 12); 
+            // 预设模拟数据展示颜色阶梯
+            const [data, setData] = useState({ 
+                "2026-03-12": 0,
+                "2026-03-11": 1, // 绿色
+                "2026-03-10": 2, // 绿色
+                "2026-03-09": 3, // 黄色
+                "2026-03-08": 4, // 黄色
+                "2026-03-07": 5, // 红色
+                "2026-03-06": 6  // 红色 + 动效
+            });
+            
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [editingDateStr, setEditingDateStr] = useState("");
+            const monthRefs = useRef([]);
+
+            const formatNumericDate = (date) => {
+                const year = date.getFullYear();
+                const month = date.getMonth() + 1;
+                const day = date.getDate();
+                return `${year}.${month}.${day}`;
+            };
+
+            const getDateKey = (date) => {
+                const d = new Date(date);
+                d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+                return d.toISOString().split('T')[0];
+            };
+
+            const fullYearData = useMemo(() => {
+                const months = [];
+                const chMonthNames = ["孟春", "仲春", "季春", "孟夏", "仲夏", "季夏", "孟秋", "仲秋", "季秋", "孟冬", "仲冬", "季冬"];
+                for (let m = 0; m < 12; m++) {
+                    const year = 2026;
+                    const firstDay = new Date(year, m, 1);
+                    const lastDay = new Date(year, m + 1, 0);
+                    let startOffset = firstDay.getDay();
+                    startOffset = startOffset === 0 ? 6 : startOffset - 1;
+
+                    const days = [];
+                    for (let i = 0; i < startOffset; i++) days.push({ type: 'empty' });
+                    for (let i = 1; i <= lastDay.getDate(); i++) {
+                        const current = new Date(year, m, i);
+                        const dStr = getDateKey(current);
+                        days.push({
+                            type: 'day',
+                            day: i,
+                            dateStr: dStr,
+                            isToday: dStr === getDateKey(SYSTEM_TODAY),
+                            isFuture: current > SYSTEM_TODAY,
+                            count: data[dStr] || 0
+                        });
+                    }
+                    months.push({ monthIdx: m, chName: chMonthNames[m], days });
+                }
+                return months;
+            }, [data]);
+
+            useEffect(() => {
+                const currentMonthIdx = SYSTEM_TODAY.getMonth();
+                if (monthRefs.current[currentMonthIdx]) {
+                    setTimeout(() => {
+                        monthRefs.current[currentMonthIdx].scrollIntoView({ 
+                            behavior: 'smooth', 
+                            block: 'start' 
+                        });
+                    }, 500);
+                }
+            }, []);
+
+            const openEditor = (dateStr) => {
+                setEditingDateStr(dateStr);
+                setIsModalOpen(true);
+                if (!data[dateStr] || data[dateStr] === 0) {
+                    setData(prev => ({ ...prev, [dateStr]: 1 }));
+                }
+            };
+
+            const updateCount = (dateStr, delta) => {
+                setData(prev => ({
+                    ...prev,
+                    [dateStr]: Math.max(0, (prev[dateStr] || 0) + delta)
+                }));
+            };
+
+            // 核心样式：24x24 像素 (w-6 h-6) 的绝对菱形
+            const getBeadStyle = (day) => {
+                if (day.type === 'empty') return "opacity-0";
+                
+                const baseDiamond = "w-6 h-6 rounded-none rotate-45 transition-all duration-700 block border-2";
+                
+                if (day.isFuture) return `${baseDiamond} border-slate-100 bg-slate-50/20 shadow-none`;
+                
+                const count = day.count;
+                // 0次：白色
+                if (count === 0) return `${baseDiamond} border-[#d4af37]/40 bg-white shadow-inner`;
+                
+                // 1-2次：绿色 (天水碧)
+                if (count >= 1 && count <= 2) return `${baseDiamond} bg-[#6b8c7a] border-[#4a6354] shadow-[0_2px_8px_rgba(107,140,122,0.3)]`;
+                
+                // 3-4次：黄色 (琥珀金)
+                if (count >= 3 && count <= 4) return `${baseDiamond} bg-[#c49b48] border-[#a17e3a] shadow-[0_2px_10px_rgba(196,155,72,0.4)]`;
+                
+                // 5次及以上：红色
+                if (count >= 5) {
+                    if (count === 5) {
+                        return `${baseDiamond} bg-[#9e2a2b] border-[#7a1f20] shadow-[0_4px_15px_rgba(158,42,43,0.5)]`;
+                    }
+                    return `${baseDiamond} bg-[#5a1617] border-[#3d0f10] shadow-[0_0_18px_rgba(90,22,23,0.6)] animate-pulse`;
+                }
+                
+                return baseDiamond;
+            };
+
+            return (
+                <div className="min-h-screen bg-[#ede4d3] text-[#3a2e2a] relative selection:bg-[#9e2a2b]/10">
+                    
+                    {/* 宣纸底纹层 */}
+                    <div className="fixed inset-0 pointer-events-none opacity-[0.08] z-0" 
+                         style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/natural-paper.png')` }}>
+                    </div>
+
+                    {/* 不透明顶部导航栏 */}
+                    <header className="fixed top-0 left-0 right-0 z-[100] w-full bg-[#f2e9d9] border-b-2 border-[#d4af37]/40 shadow-[0_6px_35px_rgba(58,46,42,0.15)]">
+                        <div className="max-w-md mx-auto h-[105px] px-6 flex items-center justify-between relative overflow-hidden">
+                            <div className="absolute left-0 top-1/2 -translate-y-1/2 h-16 w-1.5 bg-gradient-to-b from-[#9e2a2b] to-[#7a1f20] shadow-[1px_0_10px_rgba(158,42,43,0.3)]" />
+                            <div className="flex flex-col relative z-10">
+                                <div className="flex items-center gap-2 mb-1 opacity-70">
+                                    <IconCompass size={14} className="text-[#9e2a2b]" />
+                                    <span className="text-[10px] tracking-[0.4em] font-bold text-[#8b7355] uppercase font-sans">Chronicle V.2026</span>
+                                </div>
+                                <h1 className="text-[36px] font-black tracking-tighter text-[#3a2e2a] font-sans leading-none drop-shadow-sm">
+                                    {formatNumericDate(SYSTEM_TODAY)}
+                                </h1>
+                            </div>
+                            
+                            <div className="relative flex items-center group z-10">
+                                <div className="absolute inset-y-0 -left-12 -right-12 flex items-center justify-between pointer-events-none opacity-50">
+                                    <div className="flex items-center">
+                                        <div className="w-2.5 h-2.5 border border-[#d4af37] rotate-45" />
+                                        <div className="w-8 h-[1px] bg-gradient-to-r from-[#d4af37] to-transparent ml-[-1px]" />
+                                    </div>
+                                    <div className="flex items-center scale-x-[-1]">
+                                        <div className="w-2.5 h-2.5 border border-[#d4af37] rotate-45" />
+                                        <div className="w-8 h-[1px] bg-gradient-to-r from-[#d4af37] to-transparent ml-[-1px]" />
+                                    </div>
+                                </div>
+                                <div 
+                                    onClick={() => openEditor(getDateKey(SYSTEM_TODAY))}
+                                    className="relative bg-[#3a2e2a] px-5 py-2.5 border border-[#d4af37] flex items-center justify-center min-w-[105px] cursor-pointer active:scale-95 transition-all overflow-hidden"
+                                >
+                                    <span className="text-[13px] font-bold text-[#d4af37] tracking-[0.4em] whitespace-nowrap relative z-10 font-sans uppercase">雅志记录</span>
+                                    <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="w-full h-[4px] flex flex-col justify-between opacity-50">
+                            <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-[#d4af37]/60 to-transparent" />
+                            <div className="w-full h-[1.5px] bg-gradient-to-r from-transparent via-[#d4af37]/40 to-transparent" />
+                        </div>
+                    </header>
+
+                    <main className="max-w-md mx-auto px-4 pt-[150px] pb-56 relative z-10">
+                        {fullYearData.map((m, idx) => (
+                            <section key={m.monthIdx} ref={el => monthRefs.current[idx] = el} className="mb-14 relative scroll-mt-44">
+                                <div className="absolute -left-6 -top-12 text-[10.5rem] font-black text-[#d4af37]/5 pointer-events-none select-none italic font-sans leading-none tracking-tighter">
+                                    {(m.monthIdx + 1).toString().padStart(2, '0')}
+                                </div>
+                                <div className="flex items-center gap-4 mb-8 px-2 relative z-10">
+                                    <div className="flex flex-col">
+                                        <span className="text-[11px] text-[#9e2a2b] font-bold tracking-[0.7em] mb-1.5 uppercase">{m.chName}</span>
+                                        <h2 className="text-2xl font-black tracking-[0.25em] text-[#3a2e2a] drop-shadow-sm uppercase">
+                                            {new Intl.NumberFormat('zh-Hans-CN-u-nu-hanidec').format(m.monthIdx + 1)}月 · 雅记
+                                        </h2>
+                                    </div>
+                                    <div className="flex-1 h-[1.5px] bg-gradient-to-r from-[#d4af37]/40 via-[#d4af37]/10 to-transparent" />
+                                    <div className="bg-[#f2e9d9]/80 p-2.5 rounded-full border border-[#d4af37]/40">
+                                        <IconFeather size={14} className="text-[#d4af37]/60" />
+                                    </div>
+                                </div>
+                                <div className="bg-white border border-[#d4af37]/30 p-8 rounded-none shadow-[0_15px_55px_rgba(58,46,42,0.12)] relative overflow-hidden backdrop-blur-sm">
+                                    <div className="grid grid-cols-7 mb-8 text-center text-[12px] font-bold text-[#8b7355]/70 tracking-[0.4em] border-b border-[#d4af37]/15 pb-4 uppercase">
+                                        {['一', '二', '三', '四', '五', '六', '日'].map(d => <div key={d}>{d}</div>)}
+                                    </div>
+                                    <div className="grid grid-cols-7 gap-y-8 gap-x-4">
+                                        {m.days.map((day, dIdx) => (
+                                            <div key={dIdx} onClick={() => day.type === 'day' && !day.isFuture && openEditor(day.dateStr)} className="aspect-square flex items-center justify-center relative cursor-pointer group">
+                                                {day.type === 'day' && (
+                                                    <div className="relative flex items-center justify-center w-full h-full">
+                                                        <span className={`${getBeadStyle(day)} ${day.isToday ? 'ring-2 ring-[#9e2a2b] ring-offset-[4px] ring-offset-white scale-110 z-10' : ''} group-hover:scale-125 group-hover:rotate-[135deg]`} />
+                                                        {day.isToday && (
+                                                            <div className="absolute -top-8 left-1/2 -translate-x-1/2 text-[9px] font-black text-[#9e2a2b] animate-bounce whitespace-nowrap z-20">
+                                                                <div className="bg-[#9e2a2b] text-white px-2 py-0.5 rounded-none scale-75 border border-white/30 tracking-tighter">今日</div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </section>
+                        ))}
+                    </main>
+
+                    <footer className="fixed bottom-0 left-0 right-0 z-[80] p-10 bg-gradient-to-t from-[#ede4d3] via-[#ede4d3]/95 to-transparent pointer-events-none">
+                        <div className="max-w-sm mx-auto pointer-events-auto">
+                            <button onClick={() => openEditor(getDateKey(SYSTEM_TODAY))} className="w-full h-16 bg-[#3a2e2a] text-[#f2e9d9] rounded-none flex items-center justify-center gap-8 shadow-[0_35px_90px_rgba(0,0,0,0.5)] border-t border-l border-white/5 relative group active:scale-[0.98] transition-all overflow-hidden">
+                                <IconSparkles size={18} className="text-[#d4af37] animate-pulse" />
+                                <span className="font-bold tracking-[0.5em] text-[16px] drop-shadow-md text-white font-sans uppercase">今日已优雅如厕</span>
+                                <div className="flex flex-col items-center leading-none border-l border-[#d4af37]/30 pl-6">
+                                    <span className="text-[20px] font-black text-[#d4af37] tabular-nums font-sans leading-none">{data[getDateKey(SYSTEM_TODAY)] || 0}</span>
+                                    <span className="text-[10px] opacity-40 mt-1.5 uppercase font-sans tracking-[0.1em] leading-none">Times</span>
+                                </div>
+                            </button>
+                        </div>
+                    </footer>
+
+                    {isModalOpen && (
+                        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+                            <div className="absolute inset-0 bg-[#1a1412]/95 backdrop-blur-md" onClick={() => setIsModalOpen(false)} />
+                            <div className="relative bg-[#f2e9d9] w-full max-w-xs p-1.5 border-2 border-[#d4af37] shadow-[0_50px_150px_rgba(0,0,0,0.9)]">
+                                <div className="border border-[#d4af37]/40 p-10 flex flex-col items-center bg-white/90 relative overflow-hidden">
+                                    <div className="text-[#8b7355] text-[11px] tracking-[0.7em] font-bold mb-8 uppercase opacity-60 font-sans tracking-widest">Moment Record</div>
+                                    <h3 className="text-2xl font-black text-[#3a2e2a] mb-14 border-b-2 border-[#d4af37]/30 pb-6 w-full text-center tracking-widest font-sans uppercase leading-none">
+                                        {editingDateStr === getDateKey(SYSTEM_TODAY) ? formatNumericDate(SYSTEM_TODAY) : editingDateStr.replace(/-/g, '.')}
+                                    </h3>
+                                    <div className="flex items-center justify-between w-full mb-16">
+                                        <button onClick={() => updateCount(editingDateStr, -1)} className="w-18 h-18 flex items-center justify-center border-2 border-[#d4af37]/40 rounded-none text-[#3a2e2a] bg-white/50"><IconMinus size={28} /></button>
+                                        <div className="flex flex-col items-center px-4 relative">
+                                            <span className="text-8xl font-black text-[#9e2a2b] tabular-nums font-sans leading-none drop-shadow-2xl relative">{data[editingDateStr] || 0}</span>
+                                            <span className="text-[13px] font-bold text-[#8b7355] tracking-[0.6em] mt-8 uppercase relative font-sans">打卡记录</span>
+                                        </div>
+                                        <button onClick={() => updateCount(editingDateStr, 1)} className="w-18 h-18 flex items-center justify-center bg-[#9e2a2b] border-2 border-[#7a1f20] rounded-none text-white"><IconPlus size={28} /></button>
+                                    </div>
+                                    <button onClick={() => setIsModalOpen(false)} className="w-full py-6 bg-[#3a2e2a] text-[#d4af37] font-bold tracking-[0.7em] text-[16px] border-t border-[#d4af37]/20 shadow-xl">录 入 完 毕</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
